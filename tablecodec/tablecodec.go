@@ -45,6 +45,18 @@ const (
 	recordPrefixSepLength = 2
 )
 
+// define some error
+var (
+	keyLengthErr                 = errors.Errorf("key length err")
+	tablePrefixNotExistError     = errors.Errorf("table prefix not exist")
+	recordRowPrefixNotExistError = errors.Errorf("record row prefix not exist")
+	indexPrefixNotExistError     = errors.Errorf("index prefix not exist")
+
+	decodeTableIdErr = errors.Errorf("decode table id err")
+	decodeRowIdErr   = errors.Errorf("decode record row id err")
+	decodeIndexIdErr = errors.Errorf("decode index id err")
+)
+
 // TableSplitKeyLen is the length of key 't{table_id}' which is used for table split.
 const TableSplitKeyLen = 1 + idLen
 
@@ -71,7 +83,41 @@ func EncodeRowKeyWithHandle(tableID int64, handle int64) kv.Key {
 
 // DecodeRecordKey decodes the key and gets the tableID, handle.
 func DecodeRecordKey(key kv.Key) (tableID int64, handle int64, err error) {
-	/* Your code here */
+	// tablePrefix_tableID_recordPrefixSep_rowID
+	if len(key) <= prefixLen {
+		return 0, 0, keyLengthErr
+	}
+
+	// 判断表前缀是否存在
+	if !hasTablePrefix(key) {
+		return 0, 0, tablePrefixNotExistError
+	}
+
+	// 获取 key
+	key = key[tablePrefixLength:]
+
+	// tableID_recordPrefixSep_rowID
+	// 解析 key
+	key, tableID, err = codec.DecodeInt(key)
+	if err != nil {
+		return 0, 0, decodeTableIdErr
+	}
+
+	// recordPrefixSep_rowID
+	// 判断 row prefix 是否存在
+	if !hasRecordPrefixSep(key) {
+		return 0, 0, recordRowPrefixNotExistError
+	}
+	// 获取 key
+	key = key[recordPrefixSepLength:]
+	if len(key) == idLen {
+		// rowID
+		// 解析 rowId
+		key, handle, err = codec.DecodeInt(key)
+		if err != nil {
+			return 0, 0, decodeRowIdErr
+		}
+	}
 	return
 }
 
@@ -94,7 +140,33 @@ func EncodeIndexSeekKey(tableID int64, idxID int64, encodedValue []byte) kv.Key 
 
 // DecodeIndexKeyPrefix decodes the key and gets the tableID, indexID, indexValues.
 func DecodeIndexKeyPrefix(key kv.Key) (tableID int64, indexID int64, indexValues []byte, err error) {
-	/* Your code here */
+	//tablePrefix_tableID_indexPrefixSep_indexID_ColumnsValue_rowID
+	if len(key) <= prefixLen {
+		return 0, 0, nil, keyLengthErr
+	}
+
+	// check has table prefix
+	if !hasTablePrefix(key) {
+		return 0, 0, nil, tablePrefixNotExistError
+	}
+
+	// decode table id
+	key = key[tablePrefixLength:]
+	key, tableID, err = codec.DecodeInt(key)
+	if err != nil {
+		return 0, 0, nil, decodeTableIdErr
+	}
+
+	// check hash index prefix
+	if !key.HasPrefix(indexPrefixSep) {
+		return 0, 0, nil, indexPrefixNotExistError
+	}
+
+	key = key[len(indexPrefixSep):]
+	indexValues, indexID, err = codec.DecodeInt(key)
+	if err != nil {
+		return 0, 0, nil, decodeIndexIdErr
+	}
 	return tableID, indexID, indexValues, nil
 }
 
