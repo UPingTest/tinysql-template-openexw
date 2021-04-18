@@ -25,4 +25,4 @@ jobs:
         fi
 
     - name: Build & Test
-      run: make dev
+      run: make all
